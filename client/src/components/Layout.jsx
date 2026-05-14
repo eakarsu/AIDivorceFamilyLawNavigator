@@ -6,7 +6,7 @@ import {
   Scale, LayoutDashboard, LogOut, Menu, X, Sparkles,
   FileSearch, PieChart, Users, DollarSign, FileText, MessageCircle,
   Gavel, BarChart3, Heart, Home, Handshake, Calculator, Calendar,
-  BookOpen, ChevronRight, Bot
+  BookOpen, ChevronRight, Bot, Upload, Map, MessageSquare, Download
 } from 'lucide-react';
 
 const iconMap = {
@@ -69,6 +69,11 @@ export default function Layout({ children }) {
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">AI Tools</p>
           </div>
         )}
+
+        {navItem('/uploads', 'Document Upload', Upload)}
+        {navItem('/state-law', 'State Law Engine', Map)}
+        {navItem('/conversations', 'Case Advisor Chat', MessageSquare)}
+        {navItem('/predictive-ai', 'Predictive AI', Sparkles)}
 
         <button
           onClick={() => { navigate('/ai-center'); setMobileOpen(false); }}

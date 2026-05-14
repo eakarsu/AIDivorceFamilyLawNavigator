@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { auth } from '../middleware/auth.js';
 import { queryAI } from '../config/openrouter.js';
+import { aiRateLimiter } from '../middleware/rateLimiter.js';
 
 const router = Router();
 
@@ -44,9 +45,14 @@ router.get('/features', auth, async (req, res) => {
   res.json(AI_FEATURES);
 });
 
-router.post('/query', auth, async (req, res) => {
+router.post('/query', auth, aiRateLimiter, async (req, res) => {
   try {
     const { featureId, prompt } = req.body;
+
+    if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
+      return res.status(400).json({ error: 'prompt is required' });
+    }
+
     const systemPrompt = SYSTEM_PROMPTS[featureId] || SYSTEM_PROMPTS['legal-advisor'];
     const response = await queryAI(systemPrompt, prompt);
     res.json({ response, featureId });

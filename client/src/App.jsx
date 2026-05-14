@@ -5,6 +5,25 @@ import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import FeaturePage from './pages/FeaturePage';
 import AICenter from './pages/AICenter';
+import UploadsPage from './pages/UploadsPage';
+import StateLawPage from './pages/StateLawPage';
+import ConversationsPage from './pages/ConversationsPage';
+import PredictiveAIPage from './pages/PredictiveAIPage';
+
+// // === Batch 02 Gaps & Frontend Mounts ===
+import CfStateAwareLegalGuidance from './pages/CfStateAwareLegalGuidance';
+import CfChildSupportAlimonyCalculationOptimization from './pages/CfChildSupportAlimonyCalculationOptimization';
+import CfFinancialAssetValuation from './pages/CfFinancialAssetValuation';
+import CfCoParentingLogisticsOptimization from './pages/CfCoParentingLogisticsOptimization';
+import CfCustodyOutcomePrediction from './pages/CfCustodyOutcomePrediction';
+import GapMissingCalculateChildSupportCalculateAlimonyRecommend from './pages/GapMissingCalculateChildSupportCalculateAlimonyRecommend';
+import GapLimitedIntegrationWithCourtRecordsFilingSystems from './pages/GapLimitedIntegrationWithCourtRecordsFilingSystems';
+import GapNoESignatureIntegration from './pages/GapNoESignatureIntegration';
+import GapLimitedLegalResearchIntegrationLexisnexisWestlaw from './pages/GapLimitedLegalResearchIntegrationLexisnexisWestlaw';
+import GapNoCoParentingAppOrFamilyCommunicationTools from './pages/GapNoCoParentingAppOrFamilyCommunicationTools';
+import GapNoWebhooks from './pages/GapNoWebhooks';
+import GapNoPaymentBillingModule from './pages/GapNoPaymentBillingModule';
+import GapNoReportingBeyondStubs from './pages/GapNoReportingBeyondStubs';
 
 const features = [
   { path: 'documents', endpoint: 'documents', title: 'Document Analyzer', icon: 'FileSearch', fields: ['title', 'document_type', 'description', 'content', 'parties', 'status'] },
@@ -39,7 +58,26 @@ export default function App() {
           <Route key={f.path} path={`/${f.path}`} element={<FeaturePage config={f} />} />
         ))}
         <Route path="/ai-center" element={<AICenter />} />
+        <Route path="/uploads" element={<UploadsPage />} />
+        <Route path="/state-law" element={<StateLawPage />} />
+        <Route path="/conversations" element={<ConversationsPage />} />
+        <Route path="/predictive-ai" element={<PredictiveAIPage />} />
         <Route path="*" element={<Navigate to="/" />} />
+      
+        {/* // === Batch 02 Gaps & Frontend Mounts === */}
+        <Route path="/cf/state-aware-legal-guidance" element={<CfStateAwareLegalGuidance />} />
+        <Route path="/cf/child-support-alimony-calculation-optimization" element={<CfChildSupportAlimonyCalculationOptimization />} />
+        <Route path="/cf/financial-asset-valuation" element={<CfFinancialAssetValuation />} />
+        <Route path="/cf/co-parenting-logistics-optimization" element={<CfCoParentingLogisticsOptimization />} />
+        <Route path="/cf/custody-outcome-prediction" element={<CfCustodyOutcomePrediction />} />
+        <Route path="/gap/missing-calculate-child-support-calculate-alimony-recommend" element={<GapMissingCalculateChildSupportCalculateAlimonyRecommend />} />
+        <Route path="/gap/limited-integration-with-court-records-filing-systems" element={<GapLimitedIntegrationWithCourtRecordsFilingSystems />} />
+        <Route path="/gap/no-e-signature-integration" element={<GapNoESignatureIntegration />} />
+        <Route path="/gap/limited-legal-research-integration-lexisnexis-westlaw" element={<GapLimitedLegalResearchIntegrationLexisnexisWestlaw />} />
+        <Route path="/gap/no-co-parenting-app-or-family-communication-tools" element={<GapNoCoParentingAppOrFamilyCommunicationTools />} />
+        <Route path="/gap/no-webhooks" element={<GapNoWebhooks />} />
+        <Route path="/gap/no-payment-billing-module" element={<GapNoPaymentBillingModule />} />
+        <Route path="/gap/no-reporting-beyond-stubs" element={<GapNoReportingBeyondStubs />} />
       </Routes>
     </Layout>
   );

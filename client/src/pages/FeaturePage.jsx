@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import api from '../services/api';
 import {
   Plus, ArrowLeft, Trash2, Edit3, Sparkles, Save, X, Loader2,
-  ChevronRight, AlertCircle, CheckCircle
+  ChevronRight, AlertCircle, CheckCircle, Download
 } from 'lucide-react';
 import AIResponseDisplay from '../components/AIResponseDisplay';
 
@@ -56,6 +56,25 @@ const textareaFields = ['description', 'content', 'notes', 'key_terms', 'special
 function getDisplayName(item, fields) {
   return item.title || item.name || item.property_name || item.child_name || item.term || item.topic || `Item #${item.id}`;
 }
+
+// Map URL endpoint -> actual database table name (for /api/export/:table/:id/pdf)
+const ENDPOINT_TO_TABLE = {
+  documents: 'legal_documents',
+  assets: 'marital_assets',
+  custody: 'custody_cases',
+  alimony: 'alimony_cases',
+  'document-gen': 'generated_documents',
+  mediation: 'mediation_sessions',
+  filing: 'court_filings',
+  financial: 'financial_disclosures',
+  parenting: 'parenting_plans',
+  property: 'property_valuations',
+  rights: 'legal_rights',
+  settlement: 'settlement_agreements',
+  'child-support': 'child_support_cases',
+  timeline: 'divorce_timelines',
+  glossary: 'legal_glossary',
+};
 
 function getSubtext(item) {
   return item.document_type || item.asset_type || item.agreement_type || item.dispute_type ||
@@ -228,6 +247,16 @@ export default function FeaturePage({ config }) {
             </h2>
             {!creating && !editing && (
               <div className="flex gap-2">
+                {ENDPOINT_TO_TABLE[endpoint] && (
+                  <a
+                    href={`/api/export/${ENDPOINT_TO_TABLE[endpoint]}/${selected.id}/pdf`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 px-4 py-2 bg-purple-50 text-purple-600 rounded-lg hover:bg-purple-100 transition text-sm font-medium"
+                  >
+                    <Download size={15} /> Export PDF
+                  </a>
+                )}
                 <button onClick={startEdit} className="flex items-center gap-1.5 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition text-sm font-medium">
                   <Edit3 size={15} /> Edit
                 </button>

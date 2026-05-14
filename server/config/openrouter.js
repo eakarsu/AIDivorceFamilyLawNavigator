@@ -16,7 +16,7 @@ export async function queryAI(systemPrompt, userPrompt) {
       'X-Title': 'AI Divorce & Family Law Navigator',
     },
     body: JSON.stringify({
-      model: process.env.OPENROUTER_MODEL || 'anthropic/claude-haiku-4.5',
+      model: process.env.OPENROUTER_MODEL || 'anthropic/claude-3-5-sonnet-20241022',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
