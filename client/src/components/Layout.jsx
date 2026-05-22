@@ -6,7 +6,7 @@ import {
   Scale, LayoutDashboard, LogOut, Menu, X, Sparkles,
   FileSearch, PieChart, Users, DollarSign, FileText, MessageCircle,
   Gavel, BarChart3, Heart, Home, Handshake, Calculator, Calendar,
-  BookOpen, ChevronRight, Bot, Upload, Map, MessageSquare, Download
+  BookOpen, ChevronRight, Bot, Upload, Map, MessageSquare, Download, AlertTriangle
 } from 'lucide-react';
 
 const iconMap = {
@@ -74,6 +74,7 @@ export default function Layout({ children }) {
         {navItem('/state-law', 'State Law Engine', Map)}
         {navItem('/conversations', 'Case Advisor Chat', MessageSquare)}
         {navItem('/predictive-ai', 'Predictive AI', Sparkles)}
+        {navItem('/parenting-exchange-incidents', 'Exchange Incidents', AlertTriangle)}
 
         <button
           onClick={() => { navigate('/ai-center'); setMobileOpen(false); }}

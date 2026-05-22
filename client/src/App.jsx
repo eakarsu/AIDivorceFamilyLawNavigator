@@ -9,6 +9,7 @@ import UploadsPage from './pages/UploadsPage';
 import StateLawPage from './pages/StateLawPage';
 import ConversationsPage from './pages/ConversationsPage';
 import PredictiveAIPage from './pages/PredictiveAIPage';
+import ParentingExchangeIncidentLog from './pages/ParentingExchangeIncidentLog';
 
 // // === Batch 02 Gaps & Frontend Mounts ===
 import CfStateAwareLegalGuidance from './pages/CfStateAwareLegalGuidance';
@@ -24,6 +25,9 @@ import GapNoCoParentingAppOrFamilyCommunicationTools from './pages/GapNoCoParent
 import GapNoWebhooks from './pages/GapNoWebhooks';
 import GapNoPaymentBillingModule from './pages/GapNoPaymentBillingModule';
 import GapNoReportingBeyondStubs from './pages/GapNoReportingBeyondStubs';
+
+import CodexCustomVizFeature from './pages/CodexCustomVizFeature';
+import CodexOperationsFeature from './pages/CodexOperationsFeature';
 
 const features = [
   { path: 'documents', endpoint: 'documents', title: 'Document Analyzer', icon: 'FileSearch', fields: ['title', 'document_type', 'description', 'content', 'parties', 'status'] },
@@ -53,6 +57,9 @@ export default function App() {
   return (
     <Layout>
       <Routes>
+        <Route path="/codex/custom-viz" element={<CodexCustomVizFeature />} />
+        <Route path="/codex/operations" element={<CodexOperationsFeature />} />
+
         <Route path="/" element={<Dashboard />} />
         {features.map(f => (
           <Route key={f.path} path={`/${f.path}`} element={<FeaturePage config={f} />} />
@@ -62,6 +69,7 @@ export default function App() {
         <Route path="/state-law" element={<StateLawPage />} />
         <Route path="/conversations" element={<ConversationsPage />} />
         <Route path="/predictive-ai" element={<PredictiveAIPage />} />
+        <Route path="/parenting-exchange-incidents" element={<ParentingExchangeIncidentLog />} />
         <Route path="*" element={<Navigate to="/" />} />
       
         {/* // === Batch 02 Gaps & Frontend Mounts === */}

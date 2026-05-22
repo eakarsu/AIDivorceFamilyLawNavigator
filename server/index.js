@@ -32,6 +32,7 @@ import uploadsRoutes from './routes/uploads.js';
 import stateLawRoutes from './routes/stateLaw.js';
 import conversationRoutes from './routes/conversations.js';
 import exportPdfRoutes from './routes/exportPdf.js';
+import parentingExchangeIncidentLogRoutes from './routes/parentingExchangeIncidentLog.js';
 
 const app = express();
 
@@ -91,6 +92,7 @@ app.use('/api/uploads', uploadsRoutes);
 app.use('/api/state-law', stateLawRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/export', exportPdfRoutes);
+app.use('/api/parenting-exchange-incident-log', parentingExchangeIncidentLogRoutes);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
@@ -101,29 +103,15 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 3001;
-// // === Batch 02 Gaps & Frontend Mounts ===
-app.use('/api/gap-missing-calculate-child-support-calculate-alimony-recommend', require('./routes/gap_missing_calculate_child_support_calculate_alimony_recommend'));
-
-// // === Batch 02 Gaps & Frontend Mounts ===
-app.use('/api/gap-limited-integration-with-court-records-filing-systems', require('./routes/gap_limited_integration_with_court_records_filing_systems'));
-
-// // === Batch 02 Gaps & Frontend Mounts ===
-app.use('/api/gap-no-e-signature-integration', require('./routes/gap_no_e_signature_integration'));
-
-// // === Batch 02 Gaps & Frontend Mounts ===
-app.use('/api/gap-limited-legal-research-integration-lexisnexis-westlaw', require('./routes/gap_limited_legal_research_integration_lexisnexis_westlaw'));
-
-// // === Batch 02 Gaps & Frontend Mounts ===
-app.use('/api/gap-no-co-parenting-app-or-family-communication-tools', require('./routes/gap_no_co_parenting_app_or_family_communication_tools'));
-
-// // === Batch 02 Gaps & Frontend Mounts ===
-app.use('/api/gap-no-webhooks', require('./routes/gap_no_webhooks'));
-
-// // === Batch 02 Gaps & Frontend Mounts ===
-app.use('/api/gap-no-payment-billing-module', require('./routes/gap_no_payment_billing_module'));
-
-// // === Batch 02 Gaps & Frontend Mounts ===
-app.use('/api/gap-no-reporting-beyond-stubs', require('./routes/gap_no_reporting_beyond_stubs'));
+// // === Batch 02 Gaps & Frontend Mounts === (disabled: CommonJS require in ESM module)
+// app.use('/api/gap-missing-calculate-child-support-calculate-alimony-recommend', require('./routes/gap_missing_calculate_child_support_calculate_alimony_recommend'));
+// app.use('/api/gap-limited-integration-with-court-records-filing-systems', require('./routes/gap_limited_integration_with_court_records_filing_systems'));
+// app.use('/api/gap-no-e-signature-integration', require('./routes/gap_no_e_signature_integration'));
+// app.use('/api/gap-limited-legal-research-integration-lexisnexis-westlaw', require('./routes/gap_limited_legal_research_integration_lexisnexis_westlaw'));
+// app.use('/api/gap-no-co-parenting-app-or-family-communication-tools', require('./routes/gap_no_co_parenting_app_or_family_communication_tools'));
+// app.use('/api/gap-no-webhooks', require('./routes/gap_no_webhooks'));
+// app.use('/api/gap-no-payment-billing-module', require('./routes/gap_no_payment_billing_module'));
+// app.use('/api/gap-no-reporting-beyond-stubs', require('./routes/gap_no_reporting_beyond_stubs'));
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
