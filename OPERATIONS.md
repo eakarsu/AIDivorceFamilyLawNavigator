@@ -1,0 +1,7 @@
+# Operations, privacy, and legal boundary
+
+Run `scripts/bootstrap.sh`, configure `.env`, then apply `scripts/migrate.sh`. `start.sh` is non-destructive: it does not install, seed, migrate, create databases, or terminate processes it did not create. `scripts/seed-demo.sh` wraps the destructive legacy seed and requires `CONFIRM_DEMO_SEED=yes` for an isolated demo database.
+
+`/api/navigation` now provides workspace-isolated matters, jurisdiction and effective-date checked rule sources, safety screening, sourced calendar-day deadline drafts, cited option explanations, and mandatory attorney review. Public registration always creates a `client`; workspace roles control rule entry and review. Every persisted workflow record retains provenance. Generated prediction/model and legacy legal routes are quarantined by default and forbidden in production; old `gap-*` routes remain unmounted.
+
+This product provides organization and general information, not legal advice, representation, filing, deadline guarantees, or safety services. Court calendars, holidays, local rules, form versions, filing acceptance, accessibility, and attorney judgment require qualified review. Court, document-storage, e-signature, legal-aid, and secure-messaging providers remain disabled until contracts, credentials, retention terms, and failure/reconciliation tests exist. Do not store privileged or family-safety material with an unapproved provider.

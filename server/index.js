@@ -33,6 +33,10 @@ import stateLawRoutes from './routes/stateLaw.js';
 import conversationRoutes from './routes/conversations.js';
 import exportPdfRoutes from './routes/exportPdf.js';
 import parentingExchangeIncidentLogRoutes from './routes/parentingExchangeIncidentLog.js';
+import navigationWorkflowRoutes from './routes/navigationWorkflow.js';
+import { validateRuntime } from './config/runtime.js';
+
+validateRuntime();
 
 const app = express();
 
@@ -58,6 +62,13 @@ app.use(cors({
 }));
 
 app.use(express.json({ limit: '10mb' }));
+
+app.use('/api', (req, res, next) => {
+  const supported = ['/auth', '/navigation', '/health'];
+  if (supported.some(prefix => req.path.startsWith(prefix))) return next();
+  if (process.env.ENABLE_LEGACY_LEGAL_SURFACES === 'true' && process.env.NODE_ENV !== 'production') return next();
+  return res.status(404).json({ error: 'Legacy generated endpoint is outside the sourced legal-navigation boundary' });
+});
 
 app.use('/api/auth', authRoutes);
 app.use('/api/documents', documentRoutes);
@@ -93,6 +104,7 @@ app.use('/api/state-law', stateLawRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/export', exportPdfRoutes);
 app.use('/api/parenting-exchange-incident-log', parentingExchangeIncidentLogRoutes);
+app.use('/api/navigation', navigationWorkflowRoutes);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
