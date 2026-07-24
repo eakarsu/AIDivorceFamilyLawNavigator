@@ -64,7 +64,7 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 
 app.use('/api', (req, res, next) => {
-  const supported = ['/auth', '/navigation', '/health'];
+  const supported = ['/auth', '/navigation', '/ai', '/health'];
   if (supported.some(prefix => req.path.startsWith(prefix))) return next();
   if (process.env.ENABLE_LEGACY_LEGAL_SURFACES === 'true' && process.env.NODE_ENV !== 'production') return next();
   return res.status(404).json({ error: 'Legacy generated endpoint is outside the sourced legal-navigation boundary' });

@@ -1,21 +1,21 @@
 -- Adds ai_results JSONB to every entity table for structured AI output storage.
 -- Idempotent: uses IF NOT EXISTS guards.
 
-ALTER TABLE legal_documents ADD COLUMN IF NOT EXISTS ai_results JSONB;
-ALTER TABLE marital_assets ADD COLUMN IF NOT EXISTS ai_results JSONB;
-ALTER TABLE custody_cases ADD COLUMN IF NOT EXISTS ai_results JSONB;
-ALTER TABLE alimony_cases ADD COLUMN IF NOT EXISTS ai_results JSONB;
-ALTER TABLE generated_documents ADD COLUMN IF NOT EXISTS ai_results JSONB;
-ALTER TABLE mediation_sessions ADD COLUMN IF NOT EXISTS ai_results JSONB;
-ALTER TABLE court_filings ADD COLUMN IF NOT EXISTS ai_results JSONB;
-ALTER TABLE financial_disclosures ADD COLUMN IF NOT EXISTS ai_results JSONB;
-ALTER TABLE parenting_plans ADD COLUMN IF NOT EXISTS ai_results JSONB;
-ALTER TABLE property_valuations ADD COLUMN IF NOT EXISTS ai_results JSONB;
-ALTER TABLE legal_rights ADD COLUMN IF NOT EXISTS ai_results JSONB;
-ALTER TABLE settlement_agreements ADD COLUMN IF NOT EXISTS ai_results JSONB;
-ALTER TABLE child_support_cases ADD COLUMN IF NOT EXISTS ai_results JSONB;
-ALTER TABLE divorce_timelines ADD COLUMN IF NOT EXISTS ai_results JSONB;
-ALTER TABLE legal_glossary ADD COLUMN IF NOT EXISTS ai_results JSONB;
+ALTER TABLE IF EXISTS legal_documents ADD COLUMN IF NOT EXISTS ai_results JSONB;
+ALTER TABLE IF EXISTS marital_assets ADD COLUMN IF NOT EXISTS ai_results JSONB;
+ALTER TABLE IF EXISTS custody_cases ADD COLUMN IF NOT EXISTS ai_results JSONB;
+ALTER TABLE IF EXISTS alimony_cases ADD COLUMN IF NOT EXISTS ai_results JSONB;
+ALTER TABLE IF EXISTS generated_documents ADD COLUMN IF NOT EXISTS ai_results JSONB;
+ALTER TABLE IF EXISTS mediation_sessions ADD COLUMN IF NOT EXISTS ai_results JSONB;
+ALTER TABLE IF EXISTS court_filings ADD COLUMN IF NOT EXISTS ai_results JSONB;
+ALTER TABLE IF EXISTS financial_disclosures ADD COLUMN IF NOT EXISTS ai_results JSONB;
+ALTER TABLE IF EXISTS parenting_plans ADD COLUMN IF NOT EXISTS ai_results JSONB;
+ALTER TABLE IF EXISTS property_valuations ADD COLUMN IF NOT EXISTS ai_results JSONB;
+ALTER TABLE IF EXISTS legal_rights ADD COLUMN IF NOT EXISTS ai_results JSONB;
+ALTER TABLE IF EXISTS settlement_agreements ADD COLUMN IF NOT EXISTS ai_results JSONB;
+ALTER TABLE IF EXISTS child_support_cases ADD COLUMN IF NOT EXISTS ai_results JSONB;
+ALTER TABLE IF EXISTS divorce_timelines ADD COLUMN IF NOT EXISTS ai_results JSONB;
+ALTER TABLE IF EXISTS legal_glossary ADD COLUMN IF NOT EXISTS ai_results JSONB;
 
 -- New: documents uploaded for AI review
 CREATE TABLE IF NOT EXISTS uploaded_documents (
