@@ -15,18 +15,24 @@ if (process.env.CONFIRM_DEMO_SEED !== 'yes') {
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
+function requireDemoPassword() {
+  const password = process.env.DEMO_PASSWORD || process.env.SEED_DEMO_PASSWORD || process.env.DEMO_SEED_PASSWORD || '';
+  if (password.length < 12 || password.length > 1024) throw new Error('DEMO_PASSWORD must contain 12-1024 characters');
+  return password;
+}
+
 async function seed() {
   const schema = readFileSync(join(__dirname, 'schema.sql'), 'utf8');
   await pool.query(schema);
   console.log('Schema created.');
 
-  const hash = await bcrypt.hash('password123', 10);
+  const hash = await bcrypt.hash(requireDemoPassword(), 10);
   const userResult = await pool.query(
     "INSERT INTO users (name, email, password_hash) VALUES ('John Demo', 'demo@example.com', $1) RETURNING id",
     [hash]
   );
   const userId = userResult.rows[0].id;
-  console.log('Demo user created: demo@example.com / password123');
+  console.log('Demo login users provisioned from the local environment.');
 
   // Seed Legal Documents
   const documents = [
@@ -424,7 +430,7 @@ async function seed() {
   console.log('Legal glossary seeded.');
 
   console.log('\\nAll seed data inserted successfully!');
-  console.log('Login: demo@example.com / password123');
+  console.log('Demo login users provisioned from the local environment.');
   await pool.end();
 }
 

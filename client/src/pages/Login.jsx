@@ -24,8 +24,8 @@ export default function Login() {
   };
 
   const populateDemo = () => {
-    setEmail('demo@example.com');
-    setPassword('password123');
+    setEmail(import.meta.env.VITE_DEMO_EMAIL || '');
+    setPassword(import.meta.env.VITE_DEMO_PASSWORD || '');
   };
 
   return (
