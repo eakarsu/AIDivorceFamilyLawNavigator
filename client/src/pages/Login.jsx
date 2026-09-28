@@ -98,7 +98,7 @@ export default function Login() {
               className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-semibold py-3 rounded-lg transition flex items-center justify-center gap-2"
             >
               <Shield size={18} />
-              Use Demo Credentials
+              Auto Fill Demo Credentials
             </button>
           </div>
 
