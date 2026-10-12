@@ -1,3 +1,8 @@
+import { auth as aiWorkspaceDependency1 } from "./middleware/auth.js";
+import aiWorkspaceDependency2 from "./config/db.js";
+import aiWorkspaceDependency3 from "./aiWorkspaceAdapters.cjs";
+import aiWorkspaceDependency4 from "./aiWorkspace.cjs";
+import { readFileSync as readAIWorkspaceFile } from 'node:fs';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -34,6 +39,7 @@ import conversationRoutes from './routes/conversations.js';
 import exportPdfRoutes from './routes/exportPdf.js';
 import parentingExchangeIncidentLogRoutes from './routes/parentingExchangeIncidentLog.js';
 import navigationWorkflowRoutes from './routes/navigationWorkflow.js';
+import nativeRecordRoutes from './routes/nativeRecords.js';
 import { validateRuntime } from './config/runtime.js';
 
 validateRuntime();
@@ -64,13 +70,14 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 
 app.use('/api', (req, res, next) => {
-  const supported = ['/auth', '/navigation', '/ai', '/health'];
+  const supported = ['/auth', '/navigation', '/ai', '/health', '/report-workspace', '/records'];
   if (supported.some(prefix => req.path.startsWith(prefix))) return next();
   if (process.env.ENABLE_LEGACY_LEGAL_SURFACES === 'true' && process.env.NODE_ENV !== 'production') return next();
   return res.status(404).json({ error: 'Legacy generated endpoint is outside the sourced legal-navigation boundary' });
 });
 
 app.use('/api/auth', authRoutes);
+app.use('/api/records', nativeRecordRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/assets', assetRoutes);
 app.use('/api/custody', custodyRoutes);
@@ -108,6 +115,15 @@ app.use('/api/navigation', navigationWorkflowRoutes);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
+
+// Advisory AI reports only; native execution and approval routes stay unchanged.
+const aiWorkspaceSupport = aiWorkspaceDependency3;
+const aiWorkspaceFeatures = JSON.parse(readAIWorkspaceFile(new URL("./aiWorkspaceFeatures.json", import.meta.url), 'utf8'));
+const aiWorkspaceDatabase = aiWorkspaceDependency2;
+app.use('/api/report-workspace', aiWorkspaceDependency4.createAIWorkspaceRouter({
+  pool: aiWorkspaceDatabase, authenticateToken: aiWorkspaceSupport.verifiedActorAuth(aiWorkspaceDependency1),
+  aiRateLimiter: aiWorkspaceSupport.createWorkspaceLimiter(), features: aiWorkspaceFeatures,
+}));
 app.use((err, req, res, next) => {
   console.error(err.stack || err.message);
   if (err.message && err.message.startsWith('CORS:')) return res.status(403).json({ error: err.message });

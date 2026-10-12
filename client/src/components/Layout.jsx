@@ -75,6 +75,8 @@ export default function Layout({ children }) {
         {navItem('/conversations', 'Case Advisor Chat', MessageSquare)}
         {navItem('/predictive-ai', 'Predictive AI', Sparkles)}
         {navItem('/parenting-exchange-incidents', 'Exchange Incidents', AlertTriangle)}
+        {navItem('/court-dates', 'Court Dates · Drafts', Calendar)}
+        {navItem('/codex/operations', 'Operations Desk', LayoutDashboard)}
 
         <button
           onClick={() => { navigate('/ai-center'); setMobileOpen(false); }}

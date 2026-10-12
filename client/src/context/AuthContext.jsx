@@ -21,6 +21,9 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     const res = await axios.post('/api/auth/login', { email, password });
+    if (!res.data?.token || !res.data?.user?.id) {
+      throw new Error('Sign-in returned an incomplete session. Try again.');
+    }
     localStorage.setItem('token', res.data.token);
     axios.defaults.headers.common['Authorization'] = `Bearer ${res.data.token}`;
     setToken(res.data.token);

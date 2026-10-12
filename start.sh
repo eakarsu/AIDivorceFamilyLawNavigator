@@ -66,7 +66,6 @@ done
 if [[ "${MIGRATE_ON_START:-false}" == "true" ]]; then
   [[ "${ALLOW_SCHEMA_MIGRATION:-}" == "1" || "${ALLOW_SCHEMA_MIGRATION:-}" == "true" ]] || { echo "MIGRATE_ON_START requires ALLOW_SCHEMA_MIGRATION=1." >&2; exit 1; }
   bash "$project_dir/scripts/migrate.sh"
-  node "$project_dir/server/create-admin.js"
 fi
 server_pid=''; client_pid=''
 cleanup(){ [[ -n "$server_pid" ]] && kill "$server_pid" 2>/dev/null || true; [[ -n "$client_pid" ]] && kill "$client_pid" 2>/dev/null || true; }

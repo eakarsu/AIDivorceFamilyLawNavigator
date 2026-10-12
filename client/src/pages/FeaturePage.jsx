@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../services/api';
-import {
-  Plus, ArrowLeft, Trash2, Edit3, Sparkles, Save, X, Loader2,
-  ChevronRight, AlertCircle, CheckCircle, Download
-} from 'lucide-react';
-import AIResponseDisplay from '../components/AIResponseDisplay';
+import { Plus, Loader2 } from 'lucide-react';
+import AIReport, { reportText, readableLabel } from '../components/AIReport';
+import Modal from '../components/AIWorkspaceModal';
+import { isCancelled, recordDetail, recordList, requestError, demoLabel } from '../services/recordData';
+import { recordExamples } from '../services/recordExamples';
 
 const fieldLabels = {
   title: 'Title', document_type: 'Document Type', description: 'Description',
@@ -43,18 +43,18 @@ const fieldLabels = {
 
 const numericFields = ['estimated_value', 'requesting_income', 'paying_income', 'marriage_duration',
   'annual_income', 'monthly_expenses', 'total_assets', 'total_debts', 'mortgage_balance',
-  'custodial_income', 'non_custodial_income', 'num_children', 'healthcare_costs', 'childcare_costs', 'child_age'];
+  'custodial_income', 'non_custodial_income', 'num_children', 'healthcare_costs', 'childcare_costs', 'child_age', 'case_id'];
 
 const booleanFields = ['is_contested', 'has_children', 'has_property'];
-const dateFields = ['acquisition_date', 'filing_date', 'scheduled_date'];
+const dateFields = ['acquisition_date', 'filing_date', 'scheduled_date', 'date', 'exchangeDate'];
 const textareaFields = ['description', 'content', 'notes', 'key_terms', 'special_provisions',
   'party1_position', 'party2_position', 'previous_attempts', 'key_concerns', 'desired_outcome',
   'children_details', 'holiday_plan', 'special_considerations', 'address', 'situation',
   'asset_division', 'support_terms', 'custody_terms', 'parent_situation', 'special_needs',
-  'health_conditions', 'definition', 'context'];
+  'health_conditions', 'definition', 'context', 'text_content', 'research_question', 'followUp'];
 
 function getDisplayName(item, fields) {
-  return item.title || item.name || item.property_name || item.child_name || item.term || item.topic || `Item #${item.id}`;
+  return item.title || item.name || item.property_name || item.child_name || item.term || item.topic || item.filename || item.child || item.task || item.research_question || item.state_code || `Item #${item.id}`;
 }
 
 // Map URL endpoint -> actual database table name (for /api/export/:table/:id/pdf)
@@ -85,394 +85,144 @@ function getSubtext(item) {
 function formatValue(key, value) {
   if (value === null || value === undefined) return '—';
   if (booleanFields.includes(key)) return value ? 'Yes' : 'No';
-  if (numericFields.includes(key) && !['num_children', 'marriage_duration', 'child_age'].includes(key)) {
+  if (numericFields.includes(key) && !['num_children', 'marriage_duration', 'child_age', 'case_id'].includes(key)) {
     return `$${Number(value).toLocaleString()}`;
   }
-  if (dateFields.includes(key) && value) return new Date(value).toLocaleDateString();
+  if (key === 'date' && value) return new Date(value).toLocaleString();
+  if (dateFields.includes(key) && value) return new Date(`${String(value).slice(0, 10)}T12:00:00`).toLocaleDateString();
   return String(value);
+}
+
+function localTimestamp(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 23);
+}
+
+function savedTimestamp(value, original) {
+  if (!value) return null;
+  // Preserve an unchanged source instant even during the repeated DST hour.
+  if (original && value === localTimestamp(original)) return new Date(original).toISOString();
+  return new Date(value).toISOString();
 }
 
 export default function FeaturePage({ config }) {
   const { endpoint, title, fields } = config;
-  const [items, setItems] = useState([]);
-  const [selected, setSelected] = useState(null);
-  const [editing, setEditing] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [formData, setFormData] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const detailFields = config.detailFields || fields;
+  const base = `/records/${endpoint}`;
+  const [items, setItems] = useState([]), [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 1 });
+  const [capabilities, setCapabilities] = useState({}), [selected, setSelected] = useState(null), [detailCapabilities, setDetailCapabilities] = useState({});
+  const [editing, setEditing] = useState(false), [creating, setCreating] = useState(false), [deleting, setDeleting] = useState(false);
+  const [formData, setFormData] = useState({}), [exampleApplied, setExampleApplied] = useState(false);
+  const [loading, setLoading] = useState(true), [opening, setOpening] = useState(false), [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState(''), [error, setError] = useState(''), [message, setMessage] = useState('');
+  const pending = useRef({ list: null, detail: null, action: null });
+  const editableFields = (creating ? capabilities.editableFields : detailCapabilities.editableFields) || fields;
+  const examples = recordExamples(config);
+
+  const loadItems = useCallback(async (page = 1) => {
+    pending.current.list?.abort();
+    const controller = new AbortController(); pending.current.list = controller;
+    setLoading(true); setLoadError('');
+    try {
+      const response = await api.get(base, { params: { page, limit: 20 }, signal: controller.signal });
+      const result = recordList(response, page);
+      if (pending.current.list !== controller || controller.signal.aborted) return;
+      setItems(result.items); setPagination(result.pagination); setCapabilities(result.capabilities);
+    } catch (failure) {
+      if (pending.current.list === controller && !isCancelled(failure, controller.signal)) setLoadError(requestError(failure, `Could not load ${title}`));
+    } finally { if (pending.current.list === controller) { pending.current.list = null; setLoading(false); } }
+  }, [base, title]);
 
   useEffect(() => {
-    loadItems();
-    setSelected(null);
-    setEditing(false);
-    setCreating(false);
-  }, [endpoint]);
+    setItems([]); setPagination({ page: 1, total: 0, totalPages: 1 }); setSelected(null); setCreating(false); setEditing(false); setDeleting(false); setError(''); setMessage(''); setCapabilities({});
+    loadItems(1);
+    return () => { for (const request of Object.values(pending.current)) request?.abort(); pending.current = { list: null, detail: null, action: null }; };
+  }, [loadItems]);
 
-  const loadItems = async () => {
-    setLoading(true);
-    try {
-      const res = await api.get(`/${endpoint}`);
-      setItems(res.data);
-    } catch (err) {
-      setError('Failed to load items');
-    } finally {
-      setLoading(false);
-    }
+  const close = () => {
+    pending.current.detail?.abort(); pending.current.action?.abort();
+    const actionWasPending = Boolean(pending.current.action);
+    pending.current.detail = null; pending.current.action = null;
+    setOpening(false); setSaving(false); setSelected(null); setCreating(false); setEditing(false); setDeleting(false); setError('');
+    if (actionWasPending) { setMessage('Request cancelled. The record list is being refreshed to confirm the server state.'); loadItems(pagination.page); }
   };
 
-  const selectItem = async (id) => {
+  const selectItem = async id => {
+    pending.current.detail?.abort();
+    const controller = new AbortController(); pending.current.detail = controller;
+    setOpening(true); setError('');
     try {
-      const res = await api.get(`/${endpoint}/${id}`);
-      setSelected(res.data);
-      setEditing(false);
-      setCreating(false);
-    } catch (err) {
-      setError('Failed to load item');
-    }
+      const response = await api.get(`${base}/${encodeURIComponent(id)}`, { signal: controller.signal });
+      const result = recordDetail(response);
+      if (pending.current.detail !== controller || controller.signal.aborted) return;
+      setSelected(result.item); setDetailCapabilities(result.capabilities); setEditing(false); setCreating(false); setDeleting(false);
+    } catch (failure) {
+      if (pending.current.detail === controller && !isCancelled(failure, controller.signal)) setError(requestError(failure, 'Could not open the record'));
+    } finally { if (pending.current.detail === controller) { pending.current.detail = null; setOpening(false); } }
   };
 
   const startCreate = () => {
-    const empty = {};
-    fields.forEach(f => {
-      if (booleanFields.includes(f)) empty[f] = false;
-      else empty[f] = '';
-    });
-    setFormData(empty);
-    setCreating(true);
-    setEditing(false);
-    setSelected(null);
+    if (!capabilities.canCreate) return;
+    setFormData(Object.fromEntries(fields.map(field => [field, booleanFields.includes(field) ? false : ''])));
+    setSelected(null); setCreating(true); setEditing(false); setDeleting(false); setExampleApplied(false); setError('');
   };
-
   const startEdit = () => {
-    const data = {};
-    fields.forEach(f => { data[f] = selected[f] ?? ''; });
-    setFormData(data);
-    setEditing(true);
+    if (!detailCapabilities.canEdit || !selected) return;
+    setFormData(Object.fromEntries(fields.map(field => [field, field === 'date' ? localTimestamp(selected[field]) : dateFields.includes(field) && selected[field] ? String(selected[field]).slice(0, 10) : selected[field] ?? (booleanFields.includes(field) ? false : '')])));
+    setCreating(false); setEditing(true); setDeleting(false); setExampleApplied(Boolean(demoLabel(selected))); setError('');
   };
-
-  const handleSave = async () => {
-    setSaving(true);
-    setError('');
+  const save = async event => {
+    event.preventDefault();
+    if (pending.current.action || !(creating ? capabilities.canCreate : detailCapabilities.canEdit)) return;
+    const controller = new AbortController(); pending.current.action = controller; setSaving(true); setError('');
     try {
-      const cleaned = { ...formData };
-      numericFields.forEach(f => { if (f in cleaned && cleaned[f] !== '') cleaned[f] = Number(cleaned[f]); });
-
-      if (creating) {
-        const res = await api.post(`/${endpoint}`, cleaned);
-        setItems([res.data, ...items]);
-        setSelected(res.data);
-        setCreating(false);
-        setSuccess('Item created successfully');
-      } else {
-        const res = await api.put(`/${endpoint}/${selected.id}`, cleaned);
-        setSelected(res.data);
-        setItems(items.map(i => i.id === res.data.id ? res.data : i));
-        setEditing(false);
-        setSuccess('Item updated successfully');
-      }
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (err) {
-      setError(err.response?.data?.error || 'Failed to save');
-    } finally {
-      setSaving(false);
-    }
+      const values = Object.fromEntries(editableFields.filter(field => fields.includes(field)).map(field => [field, numericFields.includes(field) ? (formData[field] === '' ? null : Number(formData[field])) : field === 'date' ? savedTimestamp(formData[field], selected?.date) : dateFields.includes(field) ? formData[field] || null : formData[field]]));
+      const payload = { ...values, ...(creating && (exampleApplied || config.sampleOnly) ? { is_demo: true } : {}), ...(selected?.record_version ? { recordVersion: selected.record_version } : {}) };
+      const response = creating ? await api.post(base, payload, { signal: controller.signal }) : await api.put(`${base}/${selected.id}`, payload, { signal: controller.signal });
+      const result = recordDetail(response);
+      if (pending.current.action !== controller || controller.signal.aborted) return;
+      setSelected(result.item); setDetailCapabilities(result.capabilities); setCreating(false); setEditing(false); setMessage('Record saved to PostgreSQL.');
+      await loadItems(pagination.page);
+    } catch (failure) { if (pending.current.action === controller && !isCancelled(failure, controller.signal)) setError(requestError(failure, 'Could not save the record')); }
+    finally { if (pending.current.action === controller) { pending.current.action = null; setSaving(false); } }
   };
-
-  const handleDelete = async () => {
-    if (!confirm('Are you sure you want to delete this item?')) return;
+  const remove = async () => {
+    if (!selected || !detailCapabilities.canDelete || pending.current.action) return;
+    const controller = new AbortController(); pending.current.action = controller; setSaving(true); setError('');
     try {
-      await api.delete(`/${endpoint}/${selected.id}`);
-      setItems(items.filter(i => i.id !== selected.id));
-      setSelected(null);
-      setSuccess('Item deleted successfully');
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (err) {
-      setError('Failed to delete');
-    }
+      await api.delete(`${base}/${selected.id}`, { data: selected.record_version ? { recordVersion: selected.record_version } : undefined, signal: controller.signal });
+      if (pending.current.action !== controller || controller.signal.aborted) return;
+      setSelected(null); setDeleting(false); setMessage('Record deleted from PostgreSQL.'); await loadItems(pagination.page);
+    } catch (failure) { if (pending.current.action === controller && !isCancelled(failure, controller.signal)) setError(requestError(failure, 'Could not delete the record')); }
+    finally { if (pending.current.action === controller) { pending.current.action = null; setSaving(false); } }
   };
 
-  const handleAnalyze = async () => {
-    setAnalyzing(true);
-    setError('');
-    try {
-      const res = await api.post(`/${endpoint}/${selected.id}/analyze`);
-      setSelected({ ...selected, ai_analysis: res.data.ai_analysis });
-      setItems(items.map(i => i.id === selected.id ? { ...i, ai_analysis: res.data.ai_analysis } : i));
-    } catch (err) {
-      setError(err.response?.data?.error || 'AI analysis failed. Check your OpenRouter API key.');
-    } finally {
-      setAnalyzing(false);
-    }
+  const formatField = (field, value) => {
+    if (value === null || value === undefined || value === '') return 'Not supplied';
+    if (typeof value === 'object') return reportText(value);
+    return formatValue(field, value);
   };
+  const dialogTitle = deleting ? 'Delete this record?' : creating ? `New ${title}` : editing ? `Edit ${getDisplayName(selected, fields)}` : selected ? getDisplayName(selected, fields) : '';
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="animate-spin text-blue-500" size={40} />
-      </div>
-    );
-  }
-
-  // Detail / Edit / Create View
-  if (selected || creating) {
-    return (
-      <div className="max-w-4xl mx-auto fade-in">
-        <button
-          onClick={() => { setSelected(null); setCreating(false); setEditing(false); }}
-          className="flex items-center gap-2 text-gray-600 hover:text-blue-600 mb-4 transition"
-        >
-          <ArrowLeft size={18} /> Back to {title}
-        </button>
-
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4 flex items-center gap-2">
-            <AlertCircle size={18} /> {error}
-            <button onClick={() => setError('')} className="ml-auto"><X size={16} /></button>
-          </div>
-        )}
-        {success && (
-          <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-4 flex items-center gap-2">
-            <CheckCircle size={18} /> {success}
-          </div>
-        )}
-
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-            <h2 className="text-xl font-bold text-gray-800">
-              {creating ? `New ${title}` : (editing ? `Edit: ${getDisplayName(selected, fields)}` : getDisplayName(selected, fields))}
-            </h2>
-            {!creating && !editing && (
-              <div className="flex gap-2">
-                {ENDPOINT_TO_TABLE[endpoint] && (
-                  <a
-                    href={`/api/export/${ENDPOINT_TO_TABLE[endpoint]}/${selected.id}/pdf`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 px-4 py-2 bg-purple-50 text-purple-600 rounded-lg hover:bg-purple-100 transition text-sm font-medium"
-                  >
-                    <Download size={15} /> Export PDF
-                  </a>
-                )}
-                <button onClick={startEdit} className="flex items-center gap-1.5 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition text-sm font-medium">
-                  <Edit3 size={15} /> Edit
-                </button>
-                <button onClick={handleDelete} className="flex items-center gap-1.5 px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition text-sm font-medium">
-                  <Trash2 size={15} /> Delete
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="p-6">
-            {editing || creating ? (
-              <div className="space-y-4">
-                {fields.map(f => (
-                  <div key={f}>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {fieldLabels[f] || f}
-                    </label>
-                    {booleanFields.includes(f) ? (
-                      <select
-                        value={formData[f] ? 'true' : 'false'}
-                        onChange={e => setFormData({ ...formData, [f]: e.target.value === 'true' })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                      >
-                        <option value="false">No</option>
-                        <option value="true">Yes</option>
-                      </select>
-                    ) : dateFields.includes(f) ? (
-                      <input
-                        type="date"
-                        value={formData[f] || ''}
-                        onChange={e => setFormData({ ...formData, [f]: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                      />
-                    ) : textareaFields.includes(f) ? (
-                      <textarea
-                        value={formData[f] || ''}
-                        onChange={e => setFormData({ ...formData, [f]: e.target.value })}
-                        rows={3}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-y"
-                      />
-                    ) : (
-                      <input
-                        type={numericFields.includes(f) ? 'number' : 'text'}
-                        value={formData[f] || ''}
-                        onChange={e => setFormData({ ...formData, [f]: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                      />
-                    )}
-                  </div>
-                ))}
-                <div className="flex gap-3 pt-4">
-                  <button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 font-medium"
-                  >
-                    {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                    {saving ? 'Saving...' : 'Save'}
-                  </button>
-                  <button
-                    onClick={() => { setEditing(false); setCreating(false); }}
-                    className="px-6 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition font-medium"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {fields.filter(f => !textareaFields.includes(f)).map(f => (
-                    <div key={f} className="bg-gray-50 rounded-lg p-3">
-                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">
-                        {fieldLabels[f] || f}
-                      </p>
-                      <p className="text-gray-800 font-medium">{formatValue(f, selected[f])}</p>
-                    </div>
-                  ))}
-                </div>
-                {fields.filter(f => textareaFields.includes(f) && selected[f]).map(f => (
-                  <div key={f} className="bg-gray-50 rounded-lg p-4">
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
-                      {fieldLabels[f] || f}
-                    </p>
-                    <p className="text-gray-800 whitespace-pre-wrap">{selected[f]}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* AI Analysis Section */}
-        {!creating && !editing && (
-          <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-blue-50 to-purple-50">
-              <div className="flex items-center gap-2">
-                <Sparkles className="text-blue-600" size={20} />
-                <h3 className="text-lg font-bold text-gray-800">AI Analysis</h3>
-              </div>
-              <button
-                onClick={handleAnalyze}
-                disabled={analyzing}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium transition text-sm ${
-                  analyzing
-                    ? 'bg-blue-100 text-blue-400 cursor-wait ai-loading'
-                    : 'bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 shadow-md'
-                }`}
-              >
-                {analyzing ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" />
-                    Analyzing...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles size={16} />
-                    {selected.ai_analysis ? 'Re-Analyze with AI' : 'Analyze with AI'}
-                  </>
-                )}
-              </button>
-            </div>
-            <div className="p-6">
-              {selected.ai_analysis ? (
-                <AIResponseDisplay content={selected.ai_analysis} />
-              ) : (
-                <div className="text-center py-8 text-gray-400">
-                  <Sparkles size={40} className="mx-auto mb-3 opacity-30" />
-                  <p className="text-sm">Click "Analyze with AI" to get AI-powered insights</p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // List View
-  return (
-    <div className="max-w-5xl mx-auto fade-in">
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4 flex items-center gap-2">
-          <AlertCircle size={18} /> {error}
-          <button onClick={() => setError('')} className="ml-auto"><X size={16} /></button>
-        </div>
-      )}
-      {success && (
-        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-4 flex items-center gap-2">
-          <CheckCircle size={18} /> {success}
-        </div>
-      )}
-
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">{title}</h1>
-          <p className="text-gray-500 text-sm mt-1">{items.length} items</p>
-        </div>
-        <button
-          onClick={startCreate}
-          className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium shadow-sm"
-        >
-          <Plus size={18} /> New Item
-        </button>
-      </div>
-
-      {items.length === 0 ? (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
-          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Plus size={24} className="text-gray-400" />
-          </div>
-          <h3 className="text-lg font-semibold text-gray-600 mb-2">No items yet</h3>
-          <p className="text-gray-400 mb-4">Create your first item to get started</p>
-          <button
-            onClick={startCreate}
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
-          >
-            <Plus size={18} /> Create New
-          </button>
-        </div>
-      ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="divide-y divide-gray-100">
-            {items.map(item => (
-              <button
-                key={item.id}
-                onClick={() => selectItem(item.id)}
-                className="w-full flex items-center gap-4 px-6 py-4 hover:bg-blue-50/50 transition text-left group"
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-gray-800 group-hover:text-blue-600 transition truncate">
-                    {getDisplayName(item, fields)}
-                  </p>
-                  <p className="text-sm text-gray-500 mt-0.5 truncate">{getSubtext(item)}</p>
-                </div>
-                {item.ai_analysis && (
-                  <span className="flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1 bg-purple-50 text-purple-600 rounded-full text-xs font-medium">
-                    <Sparkles size={12} /> AI
-                  </span>
-                )}
-                {item.status && (
-                  <span className={`flex-shrink-0 px-2.5 py-1 rounded-full text-xs font-medium ${
-                    item.status === 'active' || item.status === 'completed' ? 'bg-green-50 text-green-600' :
-                    item.status === 'urgent' ? 'bg-red-50 text-red-600' :
-                    'bg-gray-100 text-gray-600'
-                  }`}>
-                    {item.status}
-                  </span>
-                )}
-                <ChevronRight size={16} className="text-gray-300 group-hover:text-blue-400 transition flex-shrink-0" />
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  return <section className="max-w-6xl mx-auto fade-in">
+    <header className="flex items-start justify-between gap-4 mb-5 flex-wrap"><div><h1 className="text-2xl font-bold text-gray-800">{title}</h1><p className="text-gray-500 text-sm mt-1">{loading ? 'Loading saved records…' : loadError ? 'Records could not be refreshed. Any visible entries are from the previous successful load.' : `${pagination.total} saved records · PostgreSQL`}</p></div><div className="flex gap-2"><button type="button" className="btn btn-secondary" onClick={() => loadItems(pagination.page)} disabled={loading}>Refresh</button><button type="button" className="btn btn-primary" onClick={startCreate} disabled={loading || Boolean(loadError) || !capabilities.canCreate}><Plus size={16}/> New Item</button></div></header>
+    <p className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-900 mb-4">{config.description || 'Synthetic demo records are labeled and are not case evidence, verified law, a filed document, a court decision or an AI provider receipt. Real records retain their native access and evidence restrictions.'}</p>
+    {loadError && <div role="alert" className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4"><p>{loadError}</p><button type="button" className="underline mt-2" onClick={() => loadItems(pagination.page)}>Retry loading records</button></div>}
+    {error && !selected && !creating && <div role="alert" className="ai-alert mb-4">{error}</div>}
+    {message && <p role="status" className="text-sm text-blue-700 mb-4">{message}</p>}
+    {opening && <div role="status" className="flex gap-3 items-center mb-4"><Loader2 size={18} className="animate-spin"/> Opening saved record…<button type="button" className="underline" onClick={close}>Cancel</button></div>}
+    {loading ? <div role="status" className="flex items-center justify-center gap-3 h-48"><Loader2 className="animate-spin text-blue-500" size={28}/> Loading saved records</div> : !loadError && items.length === 0 ? <div className="bg-white rounded-xl border p-8 text-center"><h2 className="font-semibold text-gray-700">No saved records</h2><p className="text-gray-500 mt-2">No records were returned for your account. Use the configured native demo-data setup or create an authorized draft.</p></div> : items.length > 0 ? <div className="bg-white rounded-xl border overflow-x-auto"><table className="w-full text-sm text-left"><thead className="bg-gray-50 text-gray-600"><tr><th className="px-4 py-3">Record</th><th className="px-4 py-3">Type / status</th><th className="px-4 py-3">Data classification</th><th className="px-4 py-3">Updated</th><th className="px-4 py-3">Open</th></tr></thead><tbody className="divide-y">{items.map(item => <tr key={item.id} className="hover:bg-blue-50/40"><td className="px-4 py-3"><button type="button" className="text-blue-700 font-semibold text-left hover:underline" onClick={() => selectItem(item.id)}>{getDisplayName(item, fields)}</button></td><td className="px-4 py-3">{getSubtext(item) || 'Draft record'}</td><td className="px-4 py-3">{demoLabel(item) || 'Account record · verification not implied'}</td><td className="px-4 py-3">{item.updated_at || item.created_at ? new Date(item.updated_at || item.created_at).toLocaleDateString() : 'Not supplied'}</td><td className="px-4 py-3"><button type="button" className="text-blue-700 hover:underline" aria-label={`Open ${getDisplayName(item, fields)}`} onClick={() => selectItem(item.id)}>View</button></td></tr>)}</tbody></table></div> : null}
+    {!loading && !loadError && pagination.totalPages > 1 && <nav aria-label="Record pages" className="flex items-center justify-between gap-4 mt-4"><button type="button" className="btn btn-secondary" disabled={pagination.page <= 1} onClick={() => loadItems(pagination.page - 1)}>Previous</button><span className="text-sm text-gray-600">Page {pagination.page} of {pagination.totalPages}</span><button type="button" className="btn btn-secondary" disabled={pagination.page >= pagination.totalPages} onClick={() => loadItems(pagination.page + 1)}>Next</button></nav>}
+    {(selected || creating) && <Modal title={dialogTitle} className="ai-workspace-dialog" onClose={close} footer={<><button type="button" className="btn btn-secondary" onClick={close}>Cancel</button>{!creating && !editing && !deleting && <><button type="button" className="btn btn-secondary" disabled={!detailCapabilities.canEdit || saving} onClick={startEdit}>Edit</button><button type="button" className="btn btn-danger" disabled={!detailCapabilities.canDelete || saving} onClick={() => setDeleting(true)}>Delete</button></>}{deleting && <button type="button" className="btn btn-danger" disabled={saving || !detailCapabilities.canDelete} onClick={remove}>{saving ? 'Deleting…' : 'Confirm delete'}</button>}{(editing || creating) && <button type="submit" form="native-record-form" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>}</>}>
+      {error && <div role="alert" className="ai-alert">{error}</div>}
+      {(demoLabel(selected) || exampleApplied) && <p className="bg-amber-50 rounded p-3 text-amber-900 mb-4">{demoLabel(selected) || 'Synthetic demo draft · not case evidence'}</p>}
+      {detailCapabilities.retainedReason && <p className="ai-muted mb-4">{detailCapabilities.retainedReason}</p>}
+      {deleting ? <p>Delete this saved draft from your account? Retained evidence and finalized records cannot be deleted through these controls.</p> : editing || creating ? <form id="native-record-form" onSubmit={save} className="space-y-4">
+        <div className="bg-blue-50 border border-blue-100 rounded-lg p-4"><p className="font-semibold text-blue-900">Demo record examples</p><p className="text-sm text-blue-800 mt-1">Each button fills the native draft inputs, including optional planning fields. No request is sent; save only after review. Linked case IDs must identify actual saved records and stay manual. Existing evidence and immutable fields stay protected.</p><div className="flex flex-wrap gap-2 mt-3">{examples.map(example => <button type="button" key={example.label} className="btn btn-secondary" disabled={saving || (!creating && !demoLabel(selected))} onClick={() => { setFormData({ ...formData, ...Object.fromEntries(Object.entries(example.values).filter(([key]) => editableFields.includes(key))) }); setExampleApplied(true); setError(''); }}>{example.label}</button>)}</div></div>
+        {fields.map(field => <div key={field}><label className="block text-sm font-medium text-gray-700 mb-1" htmlFor={`record-${field}`}>{fieldLabels[field] || readableLabel(field)}</label>{booleanFields.includes(field) ? <select id={`record-${field}`} value={formData[field] ? 'true' : 'false'} disabled={saving || !editableFields.includes(field)} onChange={event => setFormData({ ...formData, [field]: event.target.value === 'true' })} className="w-full px-3 py-2 border rounded-lg"><option value="false">No</option><option value="true">Yes</option></select> : textareaFields.includes(field) ? <textarea id={`record-${field}`} rows={3} disabled={saving || !editableFields.includes(field)} value={formData[field] ?? ''} onChange={event => setFormData({ ...formData, [field]: event.target.value })} className="w-full px-3 py-2 border rounded-lg resize-y"/> : <input id={`record-${field}`} type={field === 'date' ? 'datetime-local' : dateFields.includes(field) ? 'date' : numericFields.includes(field) ? 'number' : 'text'} step={field === 'date' || numericFields.includes(field) ? 'any' : undefined} disabled={saving || !editableFields.includes(field)} value={formData[field] ?? ''} onChange={event => setFormData({ ...formData, [field]: event.target.value })} className="w-full px-3 py-2 border rounded-lg"/>}{field === 'date' && <p className="text-xs text-gray-500 mt-1">Times use your browser's time zone. Planning examples are not verified court dates.</p>}</div>)}
+      </form> : <><dl className="grid grid-cols-1 md:grid-cols-2 gap-4">{detailFields.map(field => <div key={field} className="bg-gray-50 rounded-lg p-4"><dt className="text-xs text-gray-500 uppercase mb-1">{fieldLabels[field] || readableLabel(field)}</dt><dd className="text-gray-800 whitespace-pre-wrap break-words">{formatField(field, selected[field])}</dd></div>)}</dl>{(selected.ai_analysis || selected.ai_results != null) && <AIReport response={selected.ai_results ?? selected.ai_analysis} title="Stored advisory text" sourceLabel="Stored text · provider provenance not verified"/>}<p className="text-sm text-gray-500 border-t pt-4 mt-4">Direct model predictions and legacy legal actions remain outside this record-management boundary. Use the supported advisory report workspace for a separately requested OpenRouter response; an example record is not a generated report.</p></>}
+    </Modal>}
+  </section>;
 }

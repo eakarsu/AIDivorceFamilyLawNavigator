@@ -1,3 +1,4 @@
+import AIReportLibrary from "./components/AIReportLibrary";
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import Login from './pages/Login';
@@ -10,6 +11,7 @@ import StateLawPage from './pages/StateLawPage';
 import ConversationsPage from './pages/ConversationsPage';
 import PredictiveAIPage from './pages/PredictiveAIPage';
 import ParentingExchangeIncidentLog from './pages/ParentingExchangeIncidentLog';
+import { recordFeatures } from './services/recordFeatures';
 
 // // === Batch 02 Gaps & Frontend Mounts ===
 import CfStateAwareLegalGuidance from './pages/CfStateAwareLegalGuidance';
@@ -35,7 +37,7 @@ const features = [
   { path: 'custody', endpoint: 'custody', title: 'Child Custody Advisor', icon: 'Users', fields: ['child_name', 'child_age', 'current_arrangement', 'desired_arrangement', 'special_needs', 'parent_situation', 'notes', 'status'] },
   { path: 'alimony', endpoint: 'alimony', title: 'Alimony Estimator', icon: 'DollarSign', fields: ['title', 'requesting_income', 'paying_income', 'marriage_duration', 'standard_of_living', 'health_conditions', 'employment_status', 'state', 'notes', 'status'] },
   { path: 'document-gen', endpoint: 'document-gen', title: 'Document Generator', icon: 'FileText', fields: ['title', 'document_type', 'party1_name', 'party2_name', 'jurisdiction', 'key_terms', 'special_provisions', 'notes', 'status'] },
-  { path: 'mediation', endpoint: 'mediation', title: 'Mediation Assistant', icon: 'MessageCircle', fields: ['topic', 'dispute_type', 'party1_position', 'party2_position', 'previous_attempts', 'key_concerns', 'desired_outcome', 'notes', 'status'] },
+  { path: 'mediation', endpoint: 'mediation', title: 'Mediation Assistant', icon: 'MessageCircle', fields: ['topic', 'dispute_type', 'party1_position', 'party2_position', 'previous_attempts', 'key_concerns', 'desired_outcome', 'scheduled_date', 'notes', 'status'] },
   { path: 'filing', endpoint: 'filing', title: 'Court Filing Guide', icon: 'Gavel', fields: ['title', 'filing_type', 'jurisdiction', 'case_type', 'description', 'urgency', 'filing_date', 'notes', 'status'] },
   { path: 'financial', endpoint: 'financial', title: 'Financial Disclosure', icon: 'BarChart3', fields: ['title', 'disclosure_type', 'annual_income', 'monthly_expenses', 'total_assets', 'total_debts', 'employment_type', 'description', 'notes', 'status'] },
   { path: 'parenting', endpoint: 'parenting', title: 'Parenting Plan Creator', icon: 'Heart', fields: ['title', 'children_details', 'schedule_type', 'holiday_plan', 'communication_method', 'special_considerations', 'notes', 'status'] },
@@ -55,7 +57,7 @@ export default function App() {
   if (!user) return <Login />;
 
   return (
-    <Layout>
+    <><AIReportLibrary floating /><Layout>
       <Routes>
         <Route path="/codex/custom-viz" element={<CodexCustomVizFeature />} />
         <Route path="/codex/operations" element={<CodexOperationsFeature />} />
@@ -68,6 +70,7 @@ export default function App() {
         <Route path="/uploads" element={<UploadsPage />} />
         <Route path="/state-law" element={<StateLawPage />} />
         <Route path="/conversations" element={<ConversationsPage />} />
+        <Route path="/court-dates" element={<FeaturePage config={recordFeatures['court-dates']} />} />
         <Route path="/predictive-ai" element={<PredictiveAIPage />} />
         <Route path="/parenting-exchange-incidents" element={<ParentingExchangeIncidentLog />} />
         <Route path="*" element={<Navigate to="/" />} />
@@ -87,6 +90,6 @@ export default function App() {
         <Route path="/gap/no-payment-billing-module" element={<GapNoPaymentBillingModule />} />
         <Route path="/gap/no-reporting-beyond-stubs" element={<GapNoReportingBeyondStubs />} />
       </Routes>
-    </Layout>
+    </Layout></>
   );
 }

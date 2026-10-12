@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import api from '../services/api';
-import AIResponseDisplay from '../components/AIResponseDisplay';
+import FormattedAIReport from '../components/FormattedAIReport';
+import { requestError, isCancelled } from '../services/recordData';
 import {
   Sparkles, Send, Loader2, Scale, FileSearch, Users, DollarSign,
   Handshake, MessageCircle, Building, Calculator, Calendar, BookOpen,
@@ -19,26 +20,53 @@ export default function AICenter() {
   const [response, setResponse] = useState('');
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState([]);
+  const [error, setError] = useState('');
+  const [featureError, setFeatureError] = useState('');
+  const [featureLoading, setFeatureLoading] = useState(true);
+  const [notice, setNotice] = useState('');
+  const active = useRef(null);
+  const featureRequest = useRef(null);
+  const alive = useRef(true);
 
-  useEffect(() => {
-    api.get('/ai-center/features').then(res => setFeatures(res.data));
+  const loadFeatures = useCallback(async () => {
+    featureRequest.current?.abort();
+    const controller = new AbortController(); featureRequest.current = controller;
+    setFeatureLoading(true); setFeatureError('');
+    try {
+      const res = await api.get('/ai-center/features', { signal: controller.signal });
+      if (!Array.isArray(res.data)) throw new Error('The server returned an invalid AI tool catalog.');
+      if (!controller.signal.aborted && featureRequest.current === controller) setFeatures(res.data);
+    } catch (err) {
+      if (featureRequest.current === controller && !isCancelled(err, controller.signal)) setFeatureError(requestError(err, 'Could not load AI tools'));
+    } finally {
+      if (featureRequest.current === controller) { featureRequest.current = null; setFeatureLoading(false); }
+    }
   }, []);
 
+  useEffect(() => {
+    alive.current = true;
+    loadFeatures();
+    return () => { alive.current = false; featureRequest.current?.abort(); featureRequest.current = null; active.current?.abort(); active.current = null; };
+  }, [loadFeatures]);
+
+  const cancel = () => {
+    active.current?.abort(); active.current = null; setLoading(false);
+    setNotice('Request cancelled. Any late response will be ignored.');
+  };
   const handleQuery = async () => {
-    if (!prompt.trim() || !selected) return;
-    setLoading(true);
+    if (!prompt.trim() || !selected || active.current) return;
+    const controller = new AbortController(), submittedPrompt = prompt.trim(), feature = selected;
+    active.current = controller; setLoading(true); setError(''); setResponse('');
     try {
-      const res = await api.post('/ai-center/query', {
-        featureId: selected.id,
-        prompt: prompt.trim(),
-      });
-      setResponse(res.data.response);
-      setHistory(prev => [...prev, { feature: selected.name, prompt: prompt.trim(), response: res.data.response }]);
-      setPrompt('');
+      const res = await api.post('/ai-center/query', { featureId: feature.id, prompt: submittedPrompt }, { signal: controller.signal });
+      if (alive.current && active.current === controller && !controller.signal.aborted) {
+        setResponse(res.data.response);
+        setHistory(prev => [...prev, { feature: feature.name, prompt: submittedPrompt, response: res.data.response, createdAt: new Date().toISOString() }]);
+      }
     } catch (err) {
-      setResponse('Error: ' + (err.response?.data?.error || 'Failed to get AI response. Check your API key.'));
+      if (alive.current && active.current === controller && !isCancelled(err, controller.signal)) setError(requestError(err, 'Failed to get an AI response'));
     } finally {
-      setLoading(false);
+      if (alive.current && active.current === controller) { active.current = null; setLoading(false); }
     }
   };
 
@@ -60,12 +88,28 @@ export default function AICenter() {
     'negotiation-coach': 'What negotiation strategies work best for reaching a custody agreement?',
   };
 
+  const example = (feature, variant = 0) => {
+    const question = suggestedPrompts[feature.id] || `Help review ${feature.name} for a fictional family-law planning exercise.`;
+    const contexts = [
+      'Fictional planning example: California; a married couple is preparing an uncontested separation, with one school-age child, a jointly owned home, retirement savings and a mortgage. No court order or reviewed source document has been provided.',
+      'Fictional detailed example: New York; two parents are preparing mediation after a ten-year marriage, with two school-age children, variable work schedules, joint savings and a shared home. They want a workable parenting schedule and a documented financial review. No reviewed evidence or legal determination has been supplied.',
+      'Fictional concise example: Texas; a couple wants to understand a proposed separation agreement, shared housing obligations and co-parenting communication. All facts are illustrative; local rules and actual financial documents still need review.'
+    ];
+    return `${contexts[variant]}\n\nQuestion: ${question}\n\nRequested output: ${['a clear planning checklist with questions to resolve', 'a detailed comparison with assumptions, options and next steps', 'a brief plain-language summary and five practical next steps'][variant]}. Identify missing information, distinguish examples from verified facts, and do not invent legal citations or court decisions.`;
+  };
+  const fill = (variant) => {
+    if (loading || !selected) return;
+    setPrompt(example(selected, variant)); setResponse(''); setError('');
+    setNotice('Demo AI filled the complete question. Review it before generating; no AI request was sent.');
+  };
+
   if (selected) {
     const Icon = iconMap[selected.icon] || Sparkles;
     return (
       <div className="max-w-4xl mx-auto fade-in">
         <button
-          onClick={() => { setSelected(null); setResponse(''); }}
+          disabled={loading}
+          onClick={() => { setSelected(null); setResponse(''); setError(''); }}
           className="flex items-center gap-2 text-gray-600 hover:text-blue-600 mb-4 transition"
         >
           <ArrowLeft size={18} /> Back to AI Center
@@ -83,11 +127,16 @@ export default function AICenter() {
           </div>
         </div>
 
+        {error && <p role="alert" className="bg-red-50 text-red-700 p-3 rounded mb-4">{error}</p>}
+        {notice && <p role="status" className="text-sm text-blue-800 mb-4">{notice}</p>}
+        <section aria-label="Complete AI examples" className="bg-blue-50 border border-blue-100 rounded-lg p-4 mb-4"><strong>Fill all AI fields</strong><p className="text-sm mt-1">Each button fills the complete question with a fictional example. Generate separately after review.</p><div className="flex flex-wrap gap-2 mt-3">{['Demo AI · planning','Demo AI · detailed','Demo AI · concise'].map((label,index) => <button type="button" key={label} disabled={loading} onClick={() => fill(index)} className="btn btn-secondary">{label}</button>)}</div></section>
         {/* Query Input */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
           <label className="block text-sm font-semibold text-gray-700 mb-3">Ask your question</label>
           <div className="space-y-3">
             <textarea
+              aria-label="Ask your question"
+              disabled={loading}
               value={prompt}
               onChange={e => setPrompt(e.target.value)}
               placeholder="Describe your situation or ask a question..."
@@ -97,7 +146,8 @@ export default function AICenter() {
             />
             <div className="flex items-center justify-between">
               <button
-                onClick={() => setPrompt(suggestedPrompts[selected.id] || '')}
+                disabled={loading}
+                onClick={() => fill(0)}
                 className="text-sm text-blue-500 hover:text-blue-700 transition"
               >
                 Try a suggested prompt
@@ -114,9 +164,10 @@ export default function AICenter() {
                 {loading ? (
                   <><Loader2 size={16} className="animate-spin" /> Thinking...</>
                 ) : (
-                  <><Send size={16} /> Ask AI</>
+                  <><Send size={16} /> Generate with OpenRouter</>
                 )}
               </button>
+              <button type="button" disabled={!loading} onClick={cancel} className="btn btn-secondary">Cancel request</button>
             </div>
           </div>
         </div>
@@ -124,21 +175,22 @@ export default function AICenter() {
         {/* Response */}
         {response && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6 fade-in">
-            <AIResponseDisplay content={response} />
+            <FormattedAIReport title={selected.name} response={response} />
           </div>
         )}
 
         {/* History */}
-        {history.length > 0 && (
+        {history.length > 1 && (
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-700">Previous Queries</h3>
+            <h3 className="text-lg font-semibold text-gray-700">Previous queries this session</h3>
             {history.slice().reverse().slice(1).map((item, idx) => (
               <div key={idx} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded-full font-medium">{item.feature}</span>
+                  <time className="text-xs text-gray-500" dateTime={item.createdAt}>{item.createdAt ? new Date(item.createdAt).toLocaleString() : 'Time not recorded'}</time>
                 </div>
                 <p className="text-sm text-gray-700 font-medium mb-3 bg-gray-50 rounded-lg p-3">{item.prompt}</p>
-                <AIResponseDisplay content={item.response} />
+                <FormattedAIReport title={item.feature} response={item.response} />
               </div>
             ))}
           </div>
@@ -160,18 +212,21 @@ export default function AICenter() {
           </div>
         </div>
         <p className="text-blue-200 text-sm mt-2 max-w-2xl">
-          Select any AI tool below to get instant, intelligent guidance on your family law matters.
-          All responses are powered by advanced AI and tailored to your specific situation.
+          Select a tool, review the fictional example, then request an OpenRouter advisory response.
+          Responses require human review and are not legal advice, verified law, a court decision, or an executed action.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {featureLoading && <p role="status" className="bg-white border rounded-lg p-4 text-gray-600 mb-4"><Loader2 size={18} className="inline animate-spin mr-2"/>Loading AI tools…</p>}
+      {featureError && <div role="alert" className="bg-red-50 border border-red-200 text-red-700 p-4 rounded mb-4"><p>{featureError}</p><button type="button" onClick={loadFeatures} className="btn btn-secondary mt-3">Retry loading AI tools</button></div>}
+      {!featureLoading && !featureError && features.length === 0 && <div className="bg-white border rounded-lg p-5 text-gray-600 mb-4"><p>No AI tools were returned by the configured server.</p><button type="button" onClick={loadFeatures} className="btn btn-secondary mt-3">Retry loading AI tools</button></div>}
+      {!featureLoading && !featureError && <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {features.map(feature => {
           const Icon = iconMap[feature.icon] || Sparkles;
           return (
             <button
               key={feature.id}
-              onClick={() => setSelected(feature)}
+              onClick={() => { setSelected(feature); setPrompt(example(feature)); setResponse(''); setError(''); setNotice('A complete fictional example is loaded. Review before generating.'); }}
               className="bg-white rounded-xl p-6 shadow-sm hover:shadow-lg transition-all duration-300 text-left group border border-gray-100 hover:border-purple-200 hover:-translate-y-1"
             >
               <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center mb-4 shadow-lg group-hover:scale-110 transition">
@@ -187,7 +242,7 @@ export default function AICenter() {
             </button>
           );
         })}
-      </div>
+      </div>}
     </div>
   );
 }

@@ -1,231 +1,84 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import * as Icons from 'lucide-react';
 import api from '../services/api';
-import AIResponseDisplay from '../components/AIResponseDisplay';
-import { Sparkles, Loader2, Target, Users, FileText, Map, MessageSquare, Search, PenTool, Gavel } from 'lucide-react';
-
-const TABS = [
-  { id: 'predict-trial-outcome', label: 'Trial Outcome Prediction', Icon: Target },
-  { id: 'predict-custody-outcome', label: 'Custody Outcome Prediction', Icon: Users },
-  { id: 'draft-documents', label: 'AI Document Drafter', Icon: FileText },
-  { id: 'state-aware-guidance', label: 'State-Aware Guidance', Icon: Map },
-  { id: 'coparenting-message-coach', label: 'Co-parenting Message Coach', Icon: MessageSquare },
-  { id: 'legal-research-search', label: 'Legal Research', Icon: Search },
-  { id: 'esign-request', label: 'E-signature Request', Icon: PenTool },
-  { id: 'court-filing-submit', label: 'Court Filing', Icon: Gavel },
-];
+import FormattedAIReport from '../components/FormattedAIReport';
+import { recordList, isCancelled, requestError } from '../services/recordData';
+import { predictiveTools, predictiveExampleLabels, predictiveExample, predictiveMissingFields, predictiveRecordLabel } from '../services/predictiveExamples';
 
 export default function PredictiveAIPage() {
-  const [tab, setTab] = useState(TABS[0].id);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [result, setResult] = useState(null);
-
-  // shared form state
-  const [trial, setTrial] = useState({ case_facts: '', jurisdiction: '', parties: '', claims: '' });
-  const [custody, setCustody] = useState({ case_id: '', custody_facts: '', jurisdiction: '', child_factors: '' });
-  const [draft, setDraft] = useState({ document_type: '', parties: '', jurisdiction: '', facts: '' });
-  const [stateGuide, setStateGuide] = useState({ state: '', topic: 'divorce-process', facts: '' });
-  const [coachMsg, setCoachMsg] = useState({ draft: '', audience: 'co-parent', tone: 'neutral, calm, child-focused' });
-  const [research, setResearch] = useState({ query: '', jurisdiction: '' });
-  const [esign, setEsign] = useState({ document_id: '', signers: '' });
-  const [filing, setFiling] = useState({ document_id: '', jurisdiction: '' });
-
-  const submit = async () => {
-    setBusy(true);
-    setError('');
-    setResult(null);
-    try {
-      let payload = {};
-      if (tab === 'predict-trial-outcome') payload = trial;
-      else if (tab === 'predict-custody-outcome') payload = custody;
-      else if (tab === 'draft-documents') payload = draft;
-      else if (tab === 'state-aware-guidance') payload = stateGuide;
-      else if (tab === 'coparenting-message-coach') payload = coachMsg;
-      else if (tab === 'legal-research-search') payload = research;
-      else if (tab === 'esign-request') payload = esign;
-      else if (tab === 'court-filing-submit') payload = filing;
-
-      const res = await api.post(`/ai/${tab}`, payload);
-      setResult(res.data);
-    } catch (e) {
-      if (e.response?.status === 503) {
-        const missing = e.response?.data?.missing;
-        setError((e.response?.data?.error || 'Service not configured') + (missing ? ` (missing: ${missing})` : ''));
-      } else {
-        setError(e.response?.data?.error || 'Request failed.');
-      }
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const renderForm = () => {
-    if (tab === 'predict-trial-outcome') {
-      return (
-        <>
-          <label className="block text-sm font-semibold mb-1">Case Facts *</label>
-          <textarea rows={5} value={trial.case_facts} onChange={(e) => setTrial({ ...trial, case_facts: e.target.value })} className="w-full px-3 py-2 border rounded mb-3 resize-y" placeholder="Describe the relevant facts of the case..." />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-            <input value={trial.jurisdiction} onChange={(e) => setTrial({ ...trial, jurisdiction: e.target.value })} placeholder="Jurisdiction (e.g., California)" className="px-3 py-2 border rounded" />
-            <input value={trial.parties} onChange={(e) => setTrial({ ...trial, parties: e.target.value })} placeholder="Parties involved" className="px-3 py-2 border rounded" />
-            <input value={trial.claims} onChange={(e) => setTrial({ ...trial, claims: e.target.value })} placeholder="Claims at issue" className="px-3 py-2 border rounded" />
-          </div>
-        </>
-      );
-    }
-    if (tab === 'predict-custody-outcome') {
-      return (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-            <input value={custody.case_id} onChange={(e) => setCustody({ ...custody, case_id: e.target.value })} placeholder="Case ID (optional)" className="px-3 py-2 border rounded" />
-            <input value={custody.jurisdiction} onChange={(e) => setCustody({ ...custody, jurisdiction: e.target.value })} placeholder="Jurisdiction" className="px-3 py-2 border rounded" />
-          </div>
-          <label className="block text-sm font-semibold mb-1">Custody Facts</label>
-          <textarea rows={4} value={custody.custody_facts} onChange={(e) => setCustody({ ...custody, custody_facts: e.target.value })} className="w-full px-3 py-2 border rounded mb-3 resize-y" placeholder="Living situation, parenting history, work schedules..." />
-          <label className="block text-sm font-semibold mb-1">Child Factors</label>
-          <textarea rows={3} value={custody.child_factors} onChange={(e) => setCustody({ ...custody, child_factors: e.target.value })} className="w-full px-3 py-2 border rounded mb-3 resize-y" placeholder="Child's age, school, special needs, preferences..." />
-        </>
-      );
-    }
-    if (tab === 'draft-documents') {
-      return (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-            <input value={draft.document_type} onChange={(e) => setDraft({ ...draft, document_type: e.target.value })} placeholder="Document type (e.g., Marital Settlement Agreement) *" className="px-3 py-2 border rounded" />
-            <input value={draft.jurisdiction} onChange={(e) => setDraft({ ...draft, jurisdiction: e.target.value })} placeholder="Jurisdiction" className="px-3 py-2 border rounded" />
-          </div>
-          <input value={draft.parties} onChange={(e) => setDraft({ ...draft, parties: e.target.value })} placeholder="Parties (e.g., John Doe and Jane Doe)" className="w-full px-3 py-2 border rounded mb-3" />
-          <label className="block text-sm font-semibold mb-1">Facts / Terms</label>
-          <textarea rows={5} value={draft.facts} onChange={(e) => setDraft({ ...draft, facts: e.target.value })} className="w-full px-3 py-2 border rounded mb-3 resize-y" placeholder="Key facts, terms to include..." />
-        </>
-      );
-    }
-    if (tab === 'state-aware-guidance') {
-      return (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-            <input value={stateGuide.state} onChange={(e) => setStateGuide({ ...stateGuide, state: e.target.value })} placeholder="U.S. State (e.g., California)" className="px-3 py-2 border rounded" />
-            <select value={stateGuide.topic} onChange={(e) => setStateGuide({ ...stateGuide, topic: e.target.value })} className="px-3 py-2 border rounded">
-              <option value="divorce-process">Divorce Process</option>
-              <option value="child-support">Child Support</option>
-              <option value="alimony">Alimony</option>
-              <option value="custody">Custody</option>
-              <option value="property">Property Division</option>
-            </select>
-          </div>
-          <label className="block text-sm font-semibold mb-1">Your Facts</label>
-          <textarea rows={4} value={stateGuide.facts} onChange={(e) => setStateGuide({ ...stateGuide, facts: e.target.value })} className="w-full px-3 py-2 border rounded mb-3 resize-y" placeholder="Marriage length, income, kids, residence..." />
-        </>
-      );
-    }
-    if (tab === 'coparenting-message-coach') {
-      return (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-            <input value={coachMsg.audience} onChange={(e) => setCoachMsg({ ...coachMsg, audience: e.target.value })} placeholder="Audience" className="px-3 py-2 border rounded" />
-            <input value={coachMsg.tone} onChange={(e) => setCoachMsg({ ...coachMsg, tone: e.target.value })} placeholder="Desired tone" className="px-3 py-2 border rounded" />
-          </div>
-          <label className="block text-sm font-semibold mb-1">Draft Message *</label>
-          <textarea rows={5} value={coachMsg.draft} onChange={(e) => setCoachMsg({ ...coachMsg, draft: e.target.value })} className="w-full px-3 py-2 border rounded mb-3 resize-y" placeholder="Paste your draft message here..." />
-        </>
-      );
-    }
-    if (tab === 'legal-research-search') {
-      return (
-        <>
-          <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 text-xs p-2 rounded mb-3">Requires LEXIS_API_KEY or WESTLAW_API_KEY env var.</div>
-          <input value={research.jurisdiction} onChange={(e) => setResearch({ ...research, jurisdiction: e.target.value })} placeholder="Jurisdiction" className="w-full px-3 py-2 border rounded mb-3" />
-          <input value={research.query} onChange={(e) => setResearch({ ...research, query: e.target.value })} placeholder="Search query (e.g., 'spousal support modification standards')" className="w-full px-3 py-2 border rounded mb-3" />
-        </>
-      );
-    }
-    if (tab === 'esign-request') {
-      return (
-        <>
-          <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 text-xs p-2 rounded mb-3">Requires DOCUSIGN_INTEGRATION_KEY, DOCUSIGN_USER_ID, DOCUSIGN_ACCOUNT_ID env vars.</div>
-          <input value={esign.document_id} onChange={(e) => setEsign({ ...esign, document_id: e.target.value })} placeholder="Document ID" className="w-full px-3 py-2 border rounded mb-3" />
-          <input value={esign.signers} onChange={(e) => setEsign({ ...esign, signers: e.target.value })} placeholder="Signer emails (comma-separated)" className="w-full px-3 py-2 border rounded mb-3" />
-        </>
-      );
-    }
-    if (tab === 'court-filing-submit') {
-      return (
-        <>
-          <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 text-xs p-2 rounded mb-3">Requires COURT_EFILE_API_KEY env var. Per-jurisdiction wiring stubbed.</div>
-          <input value={filing.document_id} onChange={(e) => setFiling({ ...filing, document_id: e.target.value })} placeholder="Document ID" className="w-full px-3 py-2 border rounded mb-3" />
-          <input value={filing.jurisdiction} onChange={(e) => setFiling({ ...filing, jurisdiction: e.target.value })} placeholder="Jurisdiction (e.g., NY-NYC-Civil)" className="w-full px-3 py-2 border rounded mb-3" />
-        </>
-      );
-    }
-    return null;
-  };
-
-  const renderResult = () => {
-    if (!result) return null;
-    if (tab === 'draft-documents') {
-      return <AIResponseDisplay content={result.draft || ''} />;
-    }
-    if (result.prediction?.raw) {
-      return <AIResponseDisplay content={result.prediction.raw} />;
-    }
-    if (tab === 'state-aware-guidance' && result.guidance?.raw) {
-      return <AIResponseDisplay content={result.guidance.raw} />;
-    }
-    if (tab === 'coparenting-message-coach' && result.coaching?.raw) {
-      return <AIResponseDisplay content={result.coaching.raw} />;
-    }
-    return (
-      <pre className="bg-gray-50 p-4 rounded overflow-auto text-xs">{JSON.stringify(result.prediction || result.guidance || result.coaching || result, null, 2)}</pre>
-    );
-  };
-
-  return (
-    <div className="max-w-5xl mx-auto fade-in">
-      <div className="bg-gradient-to-r from-purple-600 via-blue-600 to-indigo-600 rounded-2xl p-6 mb-6 text-white shadow-xl">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
-            <Sparkles size={24} />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold">Predictive AI Tools</h2>
-            <p className="text-blue-100 text-sm">Trial &amp; custody outcome forecasts and AI document drafting</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-2 mb-4">
-        {TABS.map((t) => {
-          const Icon = t.Icon;
-          return (
-            <button
-              key={t.id}
-              onClick={() => { setTab(t.id); setResult(null); setError(''); }}
-              className={`px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition ${tab === t.id ? 'bg-blue-600 text-white shadow' : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'}`}
-            >
-              <Icon size={16} /> {t.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {error && <div className="bg-red-50 text-red-700 border border-red-200 rounded p-3 mb-4">{error}</div>}
-
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-4">
-        {renderForm()}
-        <button
-          onClick={submit}
-          disabled={busy}
-          className="mt-3 px-5 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg flex items-center gap-2 disabled:opacity-50"
-        >
-          {busy ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />} Run AI
-        </button>
-      </div>
-
-      {result && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          {renderResult()}
-        </div>
-      )}
-    </div>
-  );
+ const [tab,setTab]=useState(predictiveTools[0].id);
+ const [forms,setForms]=useState(()=>Object.fromEntries(predictiveTools.map(tool=>[tool.id,predictiveExample(tool.id)])));
+ const [sources,setSources]=useState({custody:[],documents:[]}), [sourceStatus,setSourceStatus]=useState({custody:'loading',documents:'loading'}), [sourceErrors,setSourceErrors]=useState({});
+ const [busy,setBusy]=useState(false), [error,setError]=useState(''), [result,setResult]=useState(null);
+ const [notice,setNotice]=useState('A complete fictional planning example is loaded. Review every field before generating.');
+ const active=useRef(null), sourceRequests=useRef({}), alive=useRef(true), selectedTab=useRef(tab);
+ const tool=predictiveTools.find(item=>item.id===tab), values=forms[tab], reference=tool.fields.find(field=>field.reference);
+ const requiredMissing=predictiveMissingFields(tool,values).filter(field=>field.required);
+ const loadSource=useCallback(async feature=>{
+  sourceRequests.current[feature]?.abort();
+  const controller=new AbortController();sourceRequests.current[feature]=controller;
+  setSourceStatus(current=>({...current,[feature]:'loading'}));setSourceErrors(current=>({...current,[feature]:''}));
+  try{
+   const response=await api.get(`/records/${feature}`,{params:{page:1,limit:100},signal:controller.signal});
+   const records=recordList(response,1,100).items;
+   if(controller.signal.aborted||sourceRequests.current[feature]!==controller)return;
+   setSources(current=>({...current,[feature]:records}));setSourceStatus(current=>({...current,[feature]:'ready'}));
+   setForms(current=>Object.fromEntries(Object.entries(current).map(([id,form])=>{
+    const field=predictiveTools.find(item=>item.id===id).fields.find(item=>item.reference===feature);
+    if(!field||form[field.key])return[id,form];
+    const before=predictiveExample(id), example=predictiveExample(id,0,{[feature]:records},form);
+    return[id,Object.fromEntries(Object.entries(form).map(([key,value])=>[key,value===before[key]?example[key]:value]))];
+   })));
+  }catch(failure){if(sourceRequests.current[feature]===controller&&!isCancelled(failure,controller.signal)){setSourceStatus(current=>({...current,[feature]:'error'}));setSourceErrors(current=>({...current,[feature]:requestError(failure,`Could not load saved ${feature}`)}));}}
+  finally{if(sourceRequests.current[feature]===controller)delete sourceRequests.current[feature];}
+ },[]);
+ useEffect(()=>{
+  alive.current=true;
+  for(const feature of ['custody','documents'])loadSource(feature);
+  return()=>{alive.current=false;for(const controller of Object.values(sourceRequests.current))controller.abort();sourceRequests.current={};active.current?.abort();active.current=null;};
+ },[loadSource]);
+ const applyExample=(id,variant)=>{
+  if(busy)return;
+  setForms(current=>({...current,[id]:predictiveExample(id,variant,sources,current[id])}));setResult(null);setError('');
+  setNotice('Demo AI filled the complete request, including optional inputs. Saved references use actual account records. Review before generating; no AI request was sent.');
+ };
+ const selectTool=id=>{if(busy)return;selectedTab.current=id;setTab(id);applyExample(id,0);};
+ const update=(key,value)=>setForms(current=>{
+  const next={...current[tab],[key]:value};
+  if(tab==='predict-custody-outcome'&&key==='case_id'){
+   const source=sources.custody.find(row=>String(row.id)===String(value));
+   if(!source)return{...current,[tab]:next};
+   if(!source.is_demo)next.jurisdiction='Jurisdiction not documented; verify before use';
+   return{...current,[tab]:predictiveExample(tab,0,sources,next)};
+  }
+  return{...current,[tab]:next};
+ });
+ const cancel=()=>{active.current?.abort();active.current=null;setBusy(false);setNotice('Request cancelled. Any response arriving afterward will be ignored.');};
+ const submit=async event=>{
+  event.preventDefault();if(active.current||requiredMissing.length)return;
+  const controller=new AbortController(), requestTab=tab;active.current=controller;setBusy(true);setError('');setResult(null);
+  try{const response=await api.post(`/ai/${requestTab}`,values,{signal:controller.signal});if(alive.current&&active.current===controller&&!controller.signal.aborted&&selectedTab.current===requestTab)setResult(response.data);}
+  catch(failure){if(alive.current&&active.current===controller&&!isCancelled(failure,controller.signal))setError(requestError(failure,'Could not complete the request'));}
+  finally{if(alive.current&&active.current===controller){active.current=null;setBusy(false);}}
+ };
+ return <section className="max-w-5xl mx-auto fade-in">
+  <header className="bg-gradient-to-r from-purple-600 via-blue-600 to-indigo-600 rounded-2xl p-6 mb-6 text-white shadow-xl"><h1 className="text-xl font-bold">Predictive AI Tools</h1><p className="text-blue-100 text-sm mt-1">Choose a tool to load a complete example, review every input, then run the request.</p></header>
+  <nav aria-label="Predictive AI tools" className="flex flex-wrap gap-2 mb-4">{predictiveTools.map(item=>{const Icon=Icons[item.icon];return <button type="button" key={item.id} disabled={busy} aria-pressed={tab===item.id} onClick={()=>selectTool(item.id)} className={`px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium disabled:opacity-50 ${tab===item.id?'bg-blue-600 text-white shadow':'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'}`}><Icon size={16}/>{item.label}</button>;})}</nav>
+  <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-4">
+   <h2 className="text-lg font-semibold mb-3">{tool.label}</h2>
+   <section aria-label="Complete AI examples" className="bg-blue-50 border border-blue-100 rounded-lg p-4 mb-5"><strong>Fill all AI fields</strong><p className="text-sm text-blue-900 mt-1">Every button fills the whole form, including optional inputs. Examples are for review; saved case and document IDs come from your account.</p><div className="flex flex-wrap gap-2 mt-3">{predictiveExampleLabels.map((label,index)=><button type="button" key={label} disabled={busy||(reference&&sourceStatus[reference.reference]==='loading')} onClick={()=>applyExample(tab,index)} className="btn btn-secondary">{label}</button>)}</div></section>
+   <p role="status" className="text-sm text-blue-800 mb-4">{notice}</p>
+   {reference&&sourceStatus[reference.reference]==='loading'&&<p role="status" className="text-sm text-gray-600 mb-3">Loading actual saved references…</p>}
+   {reference&&sourceErrors[reference.reference]&&<div role="alert" className="bg-red-50 text-red-700 p-3 rounded mb-3"><p>{sourceErrors[reference.reference]}</p><button type="button" className="btn btn-secondary mt-2" disabled={busy} onClick={()=>loadSource(reference.reference)}>Retry saved {reference.reference}</button></div>}
+   {reference&&sourceStatus[reference.reference]!=='loading'&&!values[reference.key]&&<p className="bg-amber-50 text-amber-900 p-3 rounded mb-3">The text inputs are filled. Select an actual saved {reference.reference==='custody'?'custody case':'document'} below to fill the reference field; no ID is invented. {reference.required?'This integration requires a saved document.':'The custody reference is optional when using the supplied facts.'}</p>}
+   {tool.integration&&<p className="bg-amber-50 text-amber-900 p-3 rounded mb-3">This integration depends on its configured provider. Demo values do not send signatures, file a document, verify law or configure credentials. The current research, signature and filing connectors report their available or stubbed state when explicitly checked.</p>}
+   {tab==='esign-request'&&<p className="text-sm text-gray-600 mb-3">Example signer addresses use example.com. Replace them with the intended recipients before a real signature workflow.</p>}
+   {error&&<p role="alert" className="bg-red-50 text-red-700 p-3 rounded mb-4">{error}</p>}
+   <form onSubmit={submit} className="space-y-4">
+    {tool.fields.map(field=><div key={field.key} data-ai-field={field.key}><label htmlFor={`predictive-${field.key}`} className="block text-sm font-semibold mb-1">{field.label}{field.required?' *':' (optional)'}</label>{field.reference?<select id={`predictive-${field.key}`} value={values[field.key]} disabled={busy||sourceStatus[field.reference]==='loading'} onChange={event=>update(field.key,event.target.value)} className="w-full px-3 py-2 border rounded-lg"><option value="">Select an actual saved {field.reference==='custody'?'case':'document'}</option>{sources[field.reference].map(row=><option key={row.id} value={String(row.id)}>{predictiveRecordLabel(row)} · #{row.id}{row.is_demo?' · sample':''}</option>)}</select>:field.options?<select id={`predictive-${field.key}`} value={values[field.key]} disabled={busy} onChange={event=>update(field.key,event.target.value)} className="w-full px-3 py-2 border rounded-lg">{field.options.map(option=><option key={option} value={option}>{option.replaceAll('-',' ')}</option>)}</select>:field.multiline?<textarea id={`predictive-${field.key}`} rows={4} required={field.required} value={values[field.key]} disabled={busy} onChange={event=>update(field.key,event.target.value)} className="w-full px-3 py-2 border rounded-lg resize-y"/>:<input id={`predictive-${field.key}`} required={field.required} value={values[field.key]} disabled={busy} onChange={event=>update(field.key,event.target.value)} className="w-full px-3 py-2 border rounded-lg"/>}</div>)}
+    <div className="flex flex-wrap gap-2 pt-2"><button type="submit" disabled={busy||requiredMissing.length>0} className="btn btn-primary">{busy?'Running…':tool.integration?'Check configured integration':'Generate with OpenRouter'}</button><button type="button" disabled={!busy} onClick={cancel} className="btn btn-secondary">Cancel request</button></div>
+   </form>
+  </div>
+  {result&&<div className="bg-white rounded-xl shadow-sm border p-6"><FormattedAIReport title={tool.integration?'Integration status':tool.label} sourceLabel={tool.integration?'Integration status':'OpenRouter response'} response={result.prediction||result.guidance||result.coaching||result.draft||result}/></div>}
+ </section>;
 }

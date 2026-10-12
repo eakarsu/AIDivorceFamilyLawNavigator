@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Scale, Shield, Eye, EyeOff } from 'lucide-react';
 
@@ -9,23 +9,42 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const pending = useRef(false);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const signIn = async (nextEmail, nextPassword) => {
+    if (pending.current) return;
+    pending.current = true;
     setError('');
     setLoading(true);
     try {
-      await login(email, password);
+      await login(nextEmail, nextPassword);
     } catch (err) {
-      setError(err.response?.data?.error || 'Login failed');
+      setError(err.response?.data?.error || err.message || 'Login failed');
     } finally {
+      pending.current = false;
       setLoading(false);
     }
   };
 
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    return signIn(email, password);
+  };
+
   const populateDemo = () => {
-    setEmail(import.meta.env.VITE_DEMO_EMAIL || '');
-    setPassword(import.meta.env.VITE_DEMO_PASSWORD || '');
+    const env = import.meta.env;
+    if (env.VITE_ENABLE_DEMO_CREDENTIAL_AUTOFILL !== 'true') {
+      setError('Demo login is unavailable in this runtime. Use your existing account to sign in.');
+      return;
+    }
+    const nextEmail = env.VITE_DEMO_EMAIL || '', nextPassword = env.VITE_DEMO_PASSWORD || '';
+    if (!nextEmail || !nextPassword) {
+      setError('Demo account credentials are not configured. Configure the existing demo account in the local startup settings.');
+      return;
+    }
+    setEmail(nextEmail);
+    setPassword(nextPassword);
+    return signIn(nextEmail, nextPassword);
   };
 
   return (
@@ -44,7 +63,7 @@ export default function Login() {
           <h2 className="text-xl font-semibold text-gray-800 mb-6 text-center">Sign In</h2>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
+            <div role="alert" className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
               {error}
             </div>
           )}
@@ -94,16 +113,18 @@ export default function Login() {
 
           <div className="mt-4">
             <button
+              type="button"
+              disabled={loading}
               onClick={populateDemo}
               className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-semibold py-3 rounded-lg transition flex items-center justify-center gap-2"
             >
               <Shield size={18} />
-              Auto Fill Demo Credentials
+              Log In as Demo
             </button>
           </div>
 
           <p className="text-xs text-gray-400 text-center mt-6">
-            Demo: demo@example.com / password123
+            Demo login uses the existing account configured for this local workspace.
           </p>
         </div>
 

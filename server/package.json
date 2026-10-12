@@ -6,7 +6,9 @@
     "dev": "nodemon --watch . --ext js,json index.js",
     "start": "node index.js",
     "seed": "node seed.js",
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "migrate": "node seed.js --migration-only",
+    "seed:inspect": "node seed.js --count"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
